@@ -1,6 +1,17 @@
-import React, {useState} from 'react';
-import {View, Text, TextInput, TouchableOpacity,} from "react-native";
+import React, {useEffect, useState} from 'react';
+import {View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform,} from "react-native";
 import styles from './styles';
+
+import {
+  API,
+  Auth,
+  graphqlOperation,
+} from 'aws-amplify';
+
+import {
+  createMessage,
+  updateChatRoom,
+} from '../../src/graphql/mutations';
 
 import {
   MaterialCommunityIcons,
@@ -10,18 +21,60 @@ import {
   Fontisto,
 } from '@expo/vector-icons';
 
-const InputBox = () => {
+const InputBox = (props) => {
+
+  const { chatRoomID } = props;
 
   const [message, setMessage] = useState('');
+  const [myUserId, setMyUserId] = useState(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const userInfo = await Auth.currentAuthenticatedUser();
+      setMyUserId(userInfo.attributes.sub);
+    }
+    fetchUser();
+  }, [])
 
   const onMicrophonePress = () => {
     console.warn('Microphone')
   }
 
-  const onSendPress = () => {
-    console.warn(`Sending: ${message}`)
+  const updateChatRoomLastMessage = async (messageId: string) => {
+    try {
+      await API.graphql(
+        graphqlOperation(
+          updateChatRoom, {
+            input: {
+              id: chatRoomID,
+              lastMessageID: messageId,
+            }
+          }
+        )
+      );
+    } catch (e) {
+      console.log(e);
+    }
+  }
 
-    // send the message to the backend
+  const onSendPress = async () => {
+    try {
+      const newMessageData = await API.graphql(
+        graphqlOperation(
+          createMessage, {
+            input: {
+              content: message,
+              userID: myUserId,
+              chatRoomID
+            }
+          }
+        )
+      )
+
+      await updateChatRoomLastMessage(newMessageData.data.createMessage.id)
+    } catch (e) {
+      console.log(e);
+    }
 
     setMessage('');
   }
@@ -35,7 +88,12 @@ const InputBox = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS == "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={100}
+      style={{width: '100%'}}
+    >
+      <View style={styles.container}>
       <View style={styles.mainContainer}>
         <FontAwesome5 name="laugh-beam" size={24} color="grey" />
         <TextInput
@@ -55,7 +113,8 @@ const InputBox = () => {
             : <MaterialIcons name="send" size={28} color="white" />}
         </View>
       </TouchableOpacity>
-    </View>
+      </View>
+    </KeyboardAvoidingView>
   )
 }
 
